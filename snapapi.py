@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import responder
+from quart import Quart, make_response
 
 # yes, recursive is needed. it isn't all imported by default.
 import selenium
@@ -20,7 +20,7 @@ log.propagate = True
 log.setLevel(logging.DEBUG) # notset, debug, info, warning, error, critical
 
 
-api = responder.API()
+api = Quart("Browse r-Screenshot-Service")
 
 BASE_URL = os.environ.get('BASE_URL', 'https://globe.adsbexchange.com/')
 LOAD_SLEEP_TIME = float(os.environ.get('LOAD_SLEEP_TIME', 1))
@@ -28,17 +28,23 @@ MAP_ARGS = os.environ.get('MAP_ARGS', 'zoom=11&hideSidebar&hideButtons&mapDim=0'
 PAGE_ZOOM = int(os.environ.get('PAGE_ZOOM', '100'))
 DISABLE_SHM = bool(os.environ.get('DISABLE_SHM'))
 DISABLE_VIZ = bool(os.environ.get('DISABLE_VIZ'))
+WINDOW_SIZE = os.environ.get('WINDOW_SIZE', '1600x1600')
 MAXTIME = int(os.environ.get('MAXTIME', '30'))
 
 @api.route('/snap')
-@api.route('/snap/{icao}')
-async def snap_api(req, resp, *, icao=''):
-  img = get_screenshot(icao)
-  resp.content = img
+@api.route('/snap/<icao>')
+async def snap_api(icao=''):
+  img = await get_screenshot(icao)
+  response = await make_response(img)
+  response.headers.set('Content-Type', 'image/png')
+  return response
 
 @api.route('/favicon.ico')
-async def snap_api(req, resp):
-  resp.content = one_by_one_pixel()
+async def favico_api():
+  img = await one_by_one_pixel()
+  response = await make_response(img)
+  response.headers.set('Content-Type', 'image/png')
+  return response
 
 def safe_url(u):
   '''Just seeing if things are fully formed.'''
@@ -54,7 +60,7 @@ def one_by_one_pixel():
   return b'GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
 @timeout_decorator.timeout(MAXTIME)
-def get_screenshot(icao):
+async def get_screenshot(icao):
   '''Returns PNG as a binary. Doesn't serve arbitrary URLs because it'd be a security hole.'''
 
   start_t = time.time()
@@ -93,7 +99,7 @@ def get_screenshot(icao):
   if DISABLE_VIZ:
     log.debug("disabling VizDisplay")
     co.add_argument("--disable-features=VizDisplayCompositor")
-  co.add_argument(f'window-size=1200x1600')
+  co.add_argument(f'window-size={WINDOW_SIZE}')
   with selenium.webdriver.Chrome(options=co) as browser:
     browser.get(url)
 
@@ -130,4 +136,4 @@ def get_screenshot(icao):
   return ss
 
 if __name__ == '__main__':
-  api.run(address='0.0.0.0')
+  api.run(host='0.0.0.0')
